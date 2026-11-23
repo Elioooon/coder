@@ -5,6 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"cdr.dev/slog/v3"
+
 	"github.com/coder/coder/v2/aibridge/recorder"
 )
 
@@ -53,7 +55,7 @@ func TestMessagesExtractRequest(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			start := &recorder.InterceptionRecord{}
-			e, ok := NewMessages().(*messagesExtractor)
+			e, ok := NewMessages(slog.Make()).(*messagesExtractor)
 			require.True(t, ok)
 
 			err := e.ExtractRequest([]byte(tc.body), start)
