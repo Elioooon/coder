@@ -20,6 +20,12 @@ curl -X GET http://coder-server:8080/api/v2/ai/providers \
 
 Any authenticated user can list providers, including disabled ones. Callers without the `ai_provider:read` permission get an empty `base_url`, an empty `api_keys` array, `null` `settings`, and no `status`. A token whose scopes do not allow `ai_provider:read` gets a 403 response.
 
+### Parameters
+
+| Name              | In    | Type    | Required | Description                                                                                                                          |
+|-------------------|-------|---------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
+| `include_deleted` | query | boolean | false    | Include deleted providers. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one. |
+
 ### Example responses
 
 > 200 Response

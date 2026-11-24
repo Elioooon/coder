@@ -241,6 +241,13 @@ Available query filters:
 
 Refer to the [API documentation](../../reference/api/aigateway.md) for full details.
 
+#### Migrate from the removed provider list route
+
+`GET /api/v2/ai-gateway/providers` has been removed.
+Call `GET /api/v2/ai/providers?include_deleted=true` instead.
+Each provider in the response keeps the `name`, `type`, `display_name`, and `icon` fields, and `display_name` now holds the provider name when no display name is set.
+Refer to [List AI providers](../../reference/api/aiproviders.md#list-ai-providers) for the full response.
+
 ## Data retention
 
 AI Gateway data is retained for **60&nbsp;days by default**.

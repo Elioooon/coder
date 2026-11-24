@@ -107,7 +107,7 @@ function renderSpend(
 	report: Partial<OrganizationAISpendReport> = {},
 ) {
 	const { spendSpy, buildReport } = mockSpendApi(report);
-	vi.spyOn(API, "getAIBridgeProviders").mockResolvedValue(MockAIProviders);
+	vi.spyOn(API, "getAIProviders").mockResolvedValue(MockAIProviders);
 	vi.spyOn(API, "getAIBridgeClients").mockResolvedValue(["Claude Code"]);
 	vi.spyOn(API, "getAIBridgeModels").mockResolvedValue(["gpt-4o"]);
 	const router = createMemoryRouter(
@@ -304,7 +304,7 @@ it("shows spend without dimension filters to viewers who cannot read AI sessions
 	auth.permissions = MockNoPermissions;
 	const { spendSpy } = renderSpend(`${initialSearch}&provider_name=openai`);
 	await screen.findByRole("table", { name: "Spend by user" });
-	expect(API.getAIBridgeProviders).not.toHaveBeenCalled();
+	expect(API.getAIProviders).not.toHaveBeenCalled();
 	expect(API.getAIBridgeModels).not.toHaveBeenCalled();
 	expect(API.getAIBridgeClients).not.toHaveBeenCalled();
 	expect(spendSpy).toHaveBeenCalledWith(
@@ -361,7 +361,7 @@ it("sends no filter option requests when AI Gateway is unavailable", async () =>
 	dashboard.aibridge = { enabled: false, entitlement: "not_entitled" };
 	renderSpend(`${initialSearch}&provider_name=openai`);
 	await screen.findByText("Get access with a Coder trial");
-	expect(API.getAIBridgeProviders).not.toHaveBeenCalled();
+	expect(API.getAIProviders).not.toHaveBeenCalled();
 	expect(API.getAIBridgeModels).not.toHaveBeenCalled();
 	expect(API.getAIBridgeClients).not.toHaveBeenCalled();
 });

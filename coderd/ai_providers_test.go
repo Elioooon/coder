@@ -15,6 +15,7 @@ import (
 	"github.com/coder/coder/v2/coderd/database"
 	"github.com/coder/coder/v2/coderd/database/db2sdk"
 	"github.com/coder/coder/v2/coderd/database/dbauthz"
+	"github.com/coder/coder/v2/coderd/rbac"
 	"github.com/coder/coder/v2/codersdk"
 	"github.com/coder/coder/v2/testutil"
 	"github.com/coder/serpent"
@@ -566,6 +567,44 @@ func TestAIProvidersCRUD(t *testing.T) {
 		var sdkErr *codersdk.Error
 		require.ErrorAs(t, err, &sdkErr)
 		require.Equal(t, http.StatusForbidden, sdkErr.StatusCode())
+	})
+
+	t.Run("ListIncludeDeleted", func(t *testing.T) {
+		t.Parallel()
+		ownerClient := coderdtest.New(t, nil)
+		firstUser := coderdtest.CreateFirstUser(t, ownerClient)
+		ctx := testutil.Context(t, testutil.WaitLong)
+
+		create := func(name string) codersdk.AIProvider {
+			//nolint:gocritic // Only owners can create providers.
+			provider, err := ownerClient.CreateAIProvider(ctx, codersdk.CreateAIProviderRequest{
+				Type:    codersdk.AIProviderTypeOpenAI,
+				Name:    name,
+				Enabled: true,
+				BaseURL: "https://api.openai.com/v1",
+			})
+			require.NoError(t, err)
+			return provider
+		}
+		gone := create("list-gone")
+		require.NoError(t, ownerClient.DeleteAIProvider(ctx, gone.ID.String()))
+		reusedBefore := create("list-reused")
+		require.NoError(t, ownerClient.DeleteAIProvider(ctx, reusedBefore.ID.String()))
+		reused := create("list-reused")
+
+		// Auditors label past sessions, which can name deleted providers.
+		auditorClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID, rbac.RoleAuditor())
+		res, err := auditorClient.Request(ctx, http.MethodGet, "/api/v2/ai/providers", nil,
+			codersdk.WithQueryParam("include_deleted", "true"))
+		require.NoError(t, err)
+		defer res.Body.Close()
+		require.Equal(t, http.StatusOK, res.StatusCode)
+		var got []codersdk.AIProvider
+		require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
+
+		require.Len(t, got, 2)
+		require.Equal(t, gone.ID, got[0].ID)
+		require.Equal(t, reused.ID, got[1].ID)
 	})
 
 	t.Run("LookupInvalidName", func(t *testing.T) {

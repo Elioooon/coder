@@ -1,7 +1,11 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { API } from "#/api/api";
+import {
+	MockAIProviderAnthropic,
+	MockAIProviderBedrock,
+} from "#/testHelpers/entities";
 import { render } from "#/testHelpers/renderHelpers";
 import { ProviderFilter, useProviderFilterMenu } from "./ProviderFilter";
 
@@ -20,12 +24,16 @@ const ProviderFilterHarness: React.FC = () => {
 
 it("names the default provider icon unless the label names it or the icon is custom", async () => {
 	const user = userEvent.setup();
-	vi.spyOn(API, "getAIBridgeProviders").mockResolvedValue([
-		{ name: "bedrock", type: "bedrock", display_name: "", icon: "" },
-		{ name: "anthropic-prod", type: "anthropic", display_name: "", icon: "" },
+	vi.spyOn(API, "getAIProviders").mockResolvedValue([
+		{ ...MockAIProviderBedrock, name: "bedrock", display_name: "bedrock" },
 		{
+			...MockAIProviderAnthropic,
+			name: "anthropic-prod",
+			display_name: "anthropic-prod",
+		},
+		{
+			...MockAIProviderBedrock,
 			name: "acme",
-			type: "bedrock",
 			display_name: "Acme",
 			icon: "/emojis/1f9ea.png",
 		},
@@ -40,5 +48,14 @@ it("names the default provider icon unless the label names it or the icon is cus
 	).toHaveAccessibleName("anthropic-prod");
 	expect(screen.getByRole("option", { name: /Acme/ })).toHaveAccessibleName(
 		"Acme",
+	);
+});
+
+it("requests deleted providers so sessions recorded under them stay filterable", async () => {
+	const getProviders = vi.spyOn(API, "getAIProviders").mockResolvedValue([]);
+	render(<ProviderFilterHarness />);
+
+	await waitFor(() =>
+		expect(getProviders).toHaveBeenCalledWith({ include_deleted: true }),
 	);
 });

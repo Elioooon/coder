@@ -9,24 +9,27 @@ import {
 	within,
 } from "storybook/test";
 import { API } from "#/api/api";
-import type { AIBridgeProvider } from "#/api/typesGenerated";
+import type { AIProvider } from "#/api/typesGenerated";
+import {
+	MockAIProviderAnthropic,
+	MockAIProviderOpenAI,
+} from "#/testHelpers/entities";
 import { withDesktopViewport } from "#/testHelpers/storybook";
 import { ProviderFilter, useProviderFilterMenu } from "./ProviderFilter";
 
-const providers: AIBridgeProvider[] = [
+const providers: AIProvider[] = [
 	{
+		...MockAIProviderAnthropic,
 		name: "anthropic-prod",
-		type: "anthropic",
 		display_name: "Anthropic (prod)",
-		icon: "",
 	},
 	{
+		...MockAIProviderOpenAI,
 		name: "openai-prod",
-		type: "openai",
 		display_name: "",
-		icon: "",
 	},
 	{
+		...MockAIProviderOpenAI,
 		name: "acme-gateway",
 		type: "openai-compat",
 		display_name: "Acme Gateway",
@@ -48,10 +51,7 @@ const meta = {
 	component: ProviderFilterWithMenu,
 	decorators: [withDesktopViewport],
 	beforeEach: () => {
-		spyOn(API, "getAIBridgeProviders").mockResolvedValue(providers);
-		spyOn(API.experimental, "listAIProviders").mockRejectedValue(
-			new Error("listAIProviders should not be called"),
-		);
+		spyOn(API, "getAIProviders").mockResolvedValue(providers);
 	},
 } satisfies Meta<typeof ProviderFilterWithMenu>;
 
@@ -76,13 +76,12 @@ export const Open: Story = {
 				screen.getByRole("option", { name: /Acme Gateway/ }),
 			).toBeInTheDocument();
 		});
-		expect(API.getAIBridgeProviders).toHaveBeenCalled();
 	},
 };
 
 export const Empty: Story = {
 	beforeEach: () => {
-		spyOn(API, "getAIBridgeProviders").mockResolvedValue([]);
+		spyOn(API, "getAIProviders").mockResolvedValue([]);
 	},
 	play: async ({ canvasElement }) => {
 		const canvas = within(canvasElement);

@@ -6,7 +6,6 @@ import {
 import { API } from "#/api/api";
 import type {
 	AIBridgeListSessionsResponse,
-	AIBridgeProvider,
 	AIBridgeSessionThreadsResponse,
 	AISpendPeriodWindow,
 	OrganizationAISpendFilter,
@@ -35,11 +34,6 @@ export const paginatedSessions = (
 			}),
 	};
 };
-
-export const aiBridgeProviders = () => ({
-	queryKey: ["aiBridgeProviders"],
-	queryFn: (): Promise<AIBridgeProvider[]> => API.getAIBridgeProviders(),
-});
 
 // The spend endpoints authorize on reading the organization's group members,
 // so this lists exactly the organizations they would serve.

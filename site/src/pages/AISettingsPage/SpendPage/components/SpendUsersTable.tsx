@@ -32,7 +32,7 @@ export type SpendReportQuery =
 type SpendUsersTableProps = {
 	reportQuery: SpendReportQuery;
 	/** Configured providers used to label the provider names in each row. */
-	providers?: readonly TypesGen.AIBridgeProvider[];
+	providers?: readonly TypesGen.AIProvider[];
 };
 
 export const SpendUsersTable: React.FC<SpendUsersTableProps> = ({
@@ -131,7 +131,7 @@ export const SpendUsersTable: React.FC<SpendUsersTableProps> = ({
 
 type SpendUserRowProps = {
 	user: TypesGen.OrganizationAISpendUser;
-	providersByName: ReadonlyMap<string, TypesGen.AIBridgeProvider>;
+	providersByName: ReadonlyMap<string, TypesGen.AIProvider>;
 };
 
 const SpendUserRow: React.FC<SpendUserRowProps> = ({

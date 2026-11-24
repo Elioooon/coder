@@ -10,7 +10,7 @@ import {
 } from "storybook/test";
 import { reactRouterParameters } from "storybook-addon-remix-react-router";
 import { API } from "#/api/api";
-import { aiBridgeProviders } from "#/api/queries/aiBridge";
+import { aiProvidersIncludingDeleted } from "#/api/queries/aiProviders";
 import type { OrganizationAISpendUser } from "#/api/typesGenerated";
 import {
 	MockAIProviderOpenAI,
@@ -108,7 +108,7 @@ const meta = {
 				),
 			}),
 		);
-		spyOn(API, "getAIBridgeProviders").mockResolvedValue(MockAIProviders);
+		spyOn(API, "getAIProviders").mockResolvedValue(MockAIProviders);
 		spyOn(API, "getAIBridgeClients").mockResolvedValue(["Claude Code"]);
 		spyOn(API, "getAIBridgeModels").mockResolvedValue(["gpt-4o"]);
 	},
@@ -211,7 +211,7 @@ export const ConfiguredProviderNames: Story = {
 		reactRouter: explicitRange,
 		queries: [
 			{
-				key: aiBridgeProviders().queryKey,
+				key: aiProvidersIncludingDeleted().queryKey,
 				data: [...MockAIProviders, mockDeepSeekProvider],
 			},
 		],

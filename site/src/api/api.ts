@@ -3115,13 +3115,6 @@ class ApiMethods {
 		return response.data;
 	};
 
-	getAIBridgeProviders = async () => {
-		const response = await this.axios.get<TypesGen.AIBridgeProvider[]>(
-			`${aiGatewayPath}/providers`,
-		);
-		return response.data;
-	};
-
 	getAIBridgeSessionList = async (options: SearchParamOptions) => {
 		const url = getURLWithSearchParams(`${aiGatewayPath}/sessions`, options);
 		const response =
@@ -3142,9 +3135,11 @@ class ApiMethods {
 		return response.data;
 	};
 
-	getAIProviders = async (): Promise<TypesGen.AIProvider[]> => {
+	getAIProviders = async (options?: {
+		include_deleted?: boolean;
+	}): Promise<TypesGen.AIProvider[]> => {
 		const response = await this.axios.get<TypesGen.AIProvider[]>(
-			"/api/v2/ai/providers",
+			getURLWithSearchParams("/api/v2/ai/providers", options),
 		);
 		return response.data;
 	};

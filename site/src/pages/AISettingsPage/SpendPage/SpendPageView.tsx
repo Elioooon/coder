@@ -33,7 +33,7 @@ type SpendPageViewProps = {
 	onPeriodChange: (value: DateTimeRangeValue) => void;
 	filterMenus: SpendFilterMenus | undefined;
 	reportQuery: SpendReportQuery;
-	providers?: readonly TypesGen.AIBridgeProvider[];
+	providers?: readonly TypesGen.AIProvider[];
 };
 
 export const SpendPageView: React.FC<SpendPageViewProps> = ({

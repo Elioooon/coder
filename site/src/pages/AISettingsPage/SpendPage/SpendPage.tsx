@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useQuery } from "react-query";
 import { useSearchParams } from "react-router";
 import {
-	aiBridgeProviders,
 	aiSpendOrganizations,
 	paginatedOrganizationAISpend,
 } from "#/api/queries/aiBridge";
+import { aiProvidersIncludingDeleted } from "#/api/queries/aiProviders";
 import type { OrganizationAISpendFilter } from "#/api/typesGenerated";
 import type { DateTimeRangeValue } from "#/components/DateTimeRangePicker/dateTimeRange";
 import { useAuthenticated } from "#/hooks/useAuthenticated";
@@ -65,8 +65,8 @@ const SpendPage: React.FC<SpendPageProps> = ({ now }) => {
 		permissions,
 	);
 	const isSpendAvailable = isEntitled && isEnabled;
-	// The provider, model, and client options come from deployment-wide AI
-	// Gateway endpoints, so only viewers of every session get those filters.
+	// The model and client options come from deployment-wide AI Gateway
+	// endpoints, so only viewers of every session get the dimension filters.
 	const canFilterDimensions = permissions.viewAnyAIBridgeInterception;
 
 	const [searchParams] = useSearchParams();
@@ -125,9 +125,9 @@ const SpendPage: React.FC<SpendPageProps> = ({ now }) => {
 	};
 
 	// Spend rows list configured provider names; the provider list resolves
-	// them to display names and icons for viewers allowed to read it.
+	// them to display names and icons.
 	const providersQuery = useQuery({
-		...aiBridgeProviders(),
+		...aiProvidersIncludingDeleted(),
 		enabled: isSpendAvailable && canFilterDimensions,
 	});
 

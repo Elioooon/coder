@@ -1,6 +1,6 @@
 import { useQueryClient } from "react-query";
-import { aiBridgeProviders } from "#/api/queries/aiBridge";
-import type { AIBridgeProvider } from "#/api/typesGenerated";
+import { aiProvidersIncludingDeleted } from "#/api/queries/aiProviders";
+import type { AIProvider } from "#/api/typesGenerated";
 import { ComboboxInput } from "#/components/Combobox/Combobox";
 import {
 	type UseFilterMenuOptions,
@@ -13,7 +13,7 @@ import {
 import { ProviderIcon } from "#/modules/aiModels/ProviderIcon";
 import { getProviderDisplayName } from "../utils";
 
-const toFilterOption = (provider: AIBridgeProvider): SelectFilterOption => {
+const toFilterOption = (provider: AIProvider): SelectFilterOption => {
 	const label = provider.display_name || provider.name;
 	const typeLabel = getProviderDisplayName(provider.type);
 	// The default icon identifies the provider type, which a custom name may
@@ -38,7 +38,8 @@ export const useProviderFilterMenu = ({
 }: Pick<UseFilterMenuOptions, "value" | "onChange" | "enabled">) => {
 	// Share the provider list cache with other consumers on the page.
 	const queryClient = useQueryClient();
-	const fetchProviders = () => queryClient.fetchQuery(aiBridgeProviders());
+	const fetchProviders = () =>
+		queryClient.fetchQuery(aiProvidersIncludingDeleted());
 	return useFilterMenu({
 		id: "provider_name",
 		getSelectedOption: async () => {

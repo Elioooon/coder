@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -51,10 +52,21 @@ func aiProvidersHandler(api *API, middlewares ...func(http.Handler) http.Handler
 // @Security CoderSessionToken
 // @Produce json
 // @Tags AI Providers
+// @Param include_deleted query bool false "Include deleted providers. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one."
 // @Success 200 {array} codersdk.AIProvider
 // @Router /api/v2/ai/providers [get]
 func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	parser := httpapi.NewQueryParamParser()
+	includeDeleted := parser.Boolean(r.URL.Query(), false, "include_deleted")
+	if len(parser.Errors) > 0 {
+		httpapi.Write(ctx, rw, http.StatusBadRequest, codersdk.Response{
+			Message:     "Invalid query parameters.",
+			Validations: parser.Errors,
+		})
+		return
+	}
 
 	// api.Authorize would log a warning for every caller without this
 	// permission, so the authorizer is called directly.
@@ -71,6 +83,7 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := api.Database.GetAIProviders(dbCtx, database.GetAIProvidersParams{
+		IncludeDeleted:  includeDeleted,
 		IncludeDisabled: true,
 	})
 	if err != nil {
@@ -81,6 +94,11 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Deleted providers can share a name. The query sorts the row to keep
+	// first.
+	rows = slices.CompactFunc(rows, func(a, b database.AIProvider) bool {
+		return a.Name == b.Name
+	})
 
 	if !fullView {
 		out := make([]codersdk.AIProvider, 0, len(rows))

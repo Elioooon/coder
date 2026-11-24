@@ -26,6 +26,13 @@ export const aiProvidersList = () => ({
 	queryFn: (): Promise<AIProvider[]> => API.getAIProviders(),
 });
 
+/** Sessions and spend recorded under a deleted provider still need its label. */
+export const aiProvidersIncludingDeleted = () => ({
+	queryKey: [...aiProvidersListKey, { include_deleted: true }] as const,
+	queryFn: (): Promise<AIProvider[]> =>
+		API.getAIProviders({ include_deleted: true }),
+});
+
 const selectChatProviderConfigs = (
 	providers: readonly AIProvider[],
 ): ChatProviderConfig[] =>

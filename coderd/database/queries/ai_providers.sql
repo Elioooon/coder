@@ -28,7 +28,9 @@ WHERE
 
 -- name: GetAIProviders :many
 -- Returns AI provider rows. Soft-deleted and disabled rows are excluded
--- unless include_deleted or include_disabled is set.
+-- unless include_deleted or include_disabled is set. Soft-deleted rows can
+-- share a name, so the live row of a name sorts first, then the most
+-- recently updated one.
 SELECT
     *
 FROM
@@ -36,21 +38,6 @@ FROM
 WHERE
     (@include_deleted::boolean OR NOT deleted)
     AND (@include_disabled::boolean OR enabled)
-ORDER BY
-    name ASC;
-
--- name: GetAIProviderFilterOptions :many
--- Returns the display metadata AI Gateway session viewers need to filter
--- interceptions by provider_name. Soft-deleted and disabled rows are
--- included because interceptions keep referencing them. When a name has
--- been reused, the live row wins so current metadata is shown.
-SELECT DISTINCT ON (name)
-    name,
-    type,
-    display_name,
-    icon
-FROM
-    ai_providers
 ORDER BY
     name ASC,
     deleted ASC,
