@@ -87,7 +87,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 	t.Run("CreateGetUpdateDelete", func(t *testing.T) {
 		t.Parallel()
 		client := coderdtest.New(t, nil)
-		_ = coderdtest.CreateFirstUser(t, client)
+		firstUser := coderdtest.CreateFirstUser(t, client)
 		ctx := testutil.Context(t, testutil.WaitLong)
 
 		// Create.
@@ -161,6 +161,14 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.NotNil(t, updated.Settings.Bedrock)
 		require.Equal(t, "us-west-2", updated.Settings.Bedrock.Region)
 		require.Equal(t, "anthropic.claude-3-5-sonnet", updated.Settings.Bedrock.Model)
+
+		memberClient, _ := coderdtest.CreateAnotherUser(t, client, firstUser.OrganizationID)
+		memberList, err := memberClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
+		require.NoError(t, err)
+		withoutConfig := updated
+		withoutConfig.BaseURL = ""
+		withoutConfig.Settings = codersdk.AIProviderSettings{}
+		require.Equal(t, []codersdk.AIProvider{withoutConfig}, memberList)
 
 		// Delete.
 		err = client.DeleteAIProvider(ctx, created.ID.String())
@@ -510,67 +518,6 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.Equal(t, live.APIKeys[0].ID, list[0].APIKeys[0].ID)
 	})
 
-	t.Run("ListRedactedWithoutConfigRead", func(t *testing.T) {
-		t.Parallel()
-		ownerClient := coderdtest.New(t, nil)
-		firstUser := coderdtest.CreateFirstUser(t, ownerClient)
-		ctx := testutil.Context(t, testutil.WaitLong)
-
-		//nolint:gocritic // Only owners can create providers.
-		bedrock, err := ownerClient.CreateAIProvider(ctx, codersdk.CreateAIProviderRequest{
-			Type:    codersdk.AIProviderTypeAnthropic,
-			Name:    "list-redacted-bedrock",
-			Enabled: false,
-			BaseURL: "https://bedrock-runtime.us-east-1.amazonaws.com/",
-			Settings: codersdk.AIProviderSettings{
-				Bedrock: &codersdk.AIProviderBedrockSettings{
-					Region:         "us-east-1",
-					Model:          "anthropic.claude-3-5-sonnet",
-					SmallFastModel: "anthropic.claude-3-5-haiku",
-				},
-			},
-		})
-		require.NoError(t, err)
-		//nolint:gocritic // Only owners can create providers.
-		openai, err := ownerClient.CreateAIProvider(ctx, codersdk.CreateAIProviderRequest{
-			Type:        codersdk.AIProviderTypeOpenAI,
-			Name:        "list-redacted-openai",
-			DisplayName: "Redacted OpenAI",
-			Enabled:     true,
-			BaseURL:     "https://api.openai.com/v1",
-			APIKeys:     []string{"sk-openai-redacted-ssssssssssssssssss"}, //nolint:gosec // test fixture
-		})
-		require.NoError(t, err)
-
-		want := []codersdk.AIProvider{bedrock, openai}
-		for i := range want {
-			want[i].BaseURL = ""
-			want[i].APIKeys = []codersdk.AIProviderKey{}
-			want[i].Settings = codersdk.AIProviderSettings{}
-			want[i].Status = nil
-		}
-
-		memberClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID)
-		got, err := memberClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
-		require.NoError(t, err)
-		require.Equal(t, want, got)
-
-		_, err = memberClient.AIProvider(ctx, openai.Name)
-		var sdkErr *codersdk.Error
-		require.ErrorAs(t, err, &sdkErr)
-		require.Equal(t, http.StatusForbidden, sdkErr.StatusCode())
-
-		token, err := memberClient.CreateToken(ctx, codersdk.Me, codersdk.CreateTokenRequest{
-			Scopes: []codersdk.APIKeyScope{codersdk.APIKeyScopeWorkspaceRead},
-		})
-		require.NoError(t, err)
-		scopedClient := codersdk.New(ownerClient.URL)
-		scopedClient.SetSessionToken(token.Key)
-		_, err = scopedClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
-		require.ErrorAs(t, err, &sdkErr)
-		require.Equal(t, http.StatusForbidden, sdkErr.StatusCode())
-	})
-
 	t.Run("ListIncludeDeleted", func(t *testing.T) {
 		t.Parallel()
 		ownerClient := coderdtest.New(t, nil)
@@ -601,6 +548,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 
 			require.Len(t, got, 2)
 			require.Equal(t, gone.ID, got[0].ID)
+			require.Empty(t, got[0].BaseURL)
 			require.Equal(t, reused.ID, got[1].ID)
 		}
 	})

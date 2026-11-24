@@ -22,9 +22,9 @@ Lists AI providers, including disabled ones. The `base_url`, `api_keys`, `settin
 
 ### Parameters
 
-| Name              | In    | Type    | Required | Description                                                                                                                          |
-|-------------------|-------|---------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `include_deleted` | query | boolean | false    | Include deleted providers. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one. |
+| Name              | In    | Type    | Required | Description                                                                                                                                                                    |
+|-------------------|-------|---------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `include_deleted` | query | boolean | false    | Include deleted providers, which are returned without configuration. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one. |
 
 ### Example responses
 

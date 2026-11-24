@@ -2832,7 +2832,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "boolean",
-                        "description": "Include deleted providers. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one.",
+                        "description": "Include deleted providers, which are returned without configuration. Each name appears once: its live provider if one exists, otherwise the most recently updated deleted one.",
                         "name": "include_deleted",
                         "in": "query"
                     }

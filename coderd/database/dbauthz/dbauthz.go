@@ -3153,11 +3153,11 @@ func (q *querier) GetAIProviderKeysByProviderIDs(ctx context.Context, providerID
 	return q.db.GetAIProviderKeysByProviderIDs(ctx, providerIDs)
 }
 
-func (q *querier) GetAIProviderSummaries(ctx context.Context, arg database.GetAIProviderSummariesParams) ([]database.GetAIProviderSummariesRow, error) {
+func (q *querier) GetAIProviderSummaries(ctx context.Context, includeDeleted bool) ([]database.GetAIProviderSummariesRow, error) {
 	if err := q.authorizeContext(ctx, policy.ActionRead, rbac.ResourceAIProvider); err != nil {
 		return nil, err
 	}
-	return q.db.GetAIProviderSummaries(ctx, arg)
+	return q.db.GetAIProviderSummaries(ctx, includeDeleted)
 }
 
 func (q *querier) GetAIProviders(ctx context.Context, arg database.GetAIProvidersParams) ([]database.AIProvider, error) {

@@ -37,12 +37,10 @@ WHERE
     (@include_deleted::boolean OR NOT deleted)
     AND (@include_disabled::boolean OR enabled)
 ORDER BY
-    name ASC,
-    deleted ASC,
-    updated_at DESC;
+    name ASC;
 
 -- name: GetAIProviderSummaries :many
-SELECT
+SELECT DISTINCT ON (name)
     id,
     type,
     name,
@@ -54,8 +52,7 @@ SELECT
 FROM
     ai_providers
 WHERE
-    (@include_deleted::boolean OR NOT deleted)
-    AND (@include_disabled::boolean OR enabled)
+    @include_deleted::boolean OR NOT deleted
 ORDER BY
     name ASC,
     deleted ASC,
