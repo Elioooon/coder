@@ -3135,11 +3135,11 @@ class ApiMethods {
 		return response.data;
 	};
 
-	getAIProviders = async (options?: {
-		include_deleted?: boolean;
-	}): Promise<TypesGen.AIProvider[]> => {
+	getAIProviders = async (
+		filter?: TypesGen.AIProvidersFilter,
+	): Promise<TypesGen.AIProvider[]> => {
 		const response = await this.axios.get<TypesGen.AIProvider[]>(
-			getURLWithSearchParams("/api/v2/ai/providers", options),
+			getURLWithSearchParams("/api/v2/ai/providers", filter),
 		);
 		return response.data;
 	};
