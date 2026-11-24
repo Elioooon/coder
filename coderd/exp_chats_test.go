@@ -15392,7 +15392,7 @@ func enableUserChatProviderKey(
 	t.Helper()
 
 	ctx := testutil.Context(t, testutil.WaitLong)
-	providers, err := adminClient.AIProviders(ctx)
+	providers, err := adminClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
 	require.NoError(t, err)
 
 	var provider codersdk.AIProvider

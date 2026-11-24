@@ -47,7 +47,7 @@ func aiProvidersHandler(api *API, middlewares ...func(http.Handler) http.Handler
 }
 
 // @Summary List AI providers
-// @Description Any authenticated user can list providers, including disabled ones. Callers without the `ai_provider:read` permission get an empty `base_url`, an empty `api_keys` array, `null` `settings`, and no `status`. A token whose scopes do not allow `ai_provider:read` gets a 403 response.
+// @Description Any authenticated user can list providers, including disabled ones. Callers without the `ai_provider:read` permission get an empty `base_url`, an empty `api_keys` array, `null` `settings`, and no `status`. A token whose scopes or allow list don't allow `ai_provider:read` gets a `403` response, unless the token can read AI Gateway sessions.
 // @ID list-ai-providers
 // @Security CoderSessionToken
 // @Produce json
@@ -74,7 +74,9 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 		policy.ActionRead, rbac.ResourceAIProvider) == nil
 	dbCtx := ctx
 	if !fullView {
-		if !api.aiProviderReadInKeyScope(ctx) {
+		canReadSessions := api.HTTPAuth.Authorizer.Authorize(ctx, httpmw.UserAuthorization(ctx),
+			policy.ActionRead, rbac.ResourceAibridgeInterception) == nil
+		if !canReadSessions && !api.aiProviderReadInKeyScope(ctx) {
 			httpapi.Forbidden(rw)
 			return
 		}

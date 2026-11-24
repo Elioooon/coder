@@ -728,6 +728,11 @@ export const AIProviderTypes: AIProviderType[] = [
 	"vercel",
 ];
 
+// From codersdk/aiproviders.go
+export interface AIProvidersFilter {
+	readonly include_deleted?: boolean;
+}
+
 // From codersdk/aibridge.go
 /**
  * AISpendPeriodWindow is the [Start, End) window over which AI spend is

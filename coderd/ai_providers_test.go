@@ -42,10 +42,10 @@ func TestAIProvidersCRUD(t *testing.T) {
 		ctx := testutil.Context(t, testutil.WaitLong)
 		// The web UI maps over the list, so it must encode as [], not null.
 		//nolint:gocritic // Owners get the full view, which is built separately.
-		got, err := client.AIProviders(ctx)
+		got, err := client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Equal(t, []codersdk.AIProvider{}, got)
-		got, err = memberClient.AIProviders(ctx)
+		got, err = memberClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Equal(t, []codersdk.AIProvider{}, got)
 	})
@@ -131,7 +131,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.Equal(t, created.ID, gotByName.ID)
 
 		// List.
-		list, err := client.AIProviders(ctx)
+		list, err := client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Len(t, list, 1)
 		require.Equal(t, created.ID, list[0].ID)
@@ -175,7 +175,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.Contains(t, sdkErr.Message, "Resource not found")
 
 		// List excludes the deleted provider.
-		list, err = client.AIProviders(ctx)
+		list, err = client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Empty(t, list)
 
@@ -503,7 +503,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		list, err := client.AIProviders(ctx)
+		list, err := client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Len(t, list, 1)
 		require.Equal(t, live.ID, list[0].ID)
@@ -552,7 +552,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 		}
 
 		memberClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID)
-		got, err := memberClient.AIProviders(ctx)
+		got, err := memberClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Equal(t, want, got)
 
@@ -563,10 +563,20 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.NoError(t, err)
 		scopedClient := codersdk.New(ownerClient.URL)
 		scopedClient.SetSessionToken(token.Key)
-		_, err = scopedClient.AIProviders(ctx)
+		_, err = scopedClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		var sdkErr *codersdk.Error
 		require.ErrorAs(t, err, &sdkErr)
 		require.Equal(t, http.StatusForbidden, sdkErr.StatusCode())
+
+		auditorClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID, rbac.RoleAuditor())
+		sessionsOnly, err := auditorClient.CreateToken(ctx, codersdk.Me, codersdk.CreateTokenRequest{
+			AllowList: []codersdk.APIAllowListTarget{{Type: codersdk.ResourceAibridgeInterception, ID: "*"}},
+		})
+		require.NoError(t, err)
+		scopedClient.SetSessionToken(sessionsOnly.Key)
+		got, err = scopedClient.AIProviders(ctx, codersdk.AIProvidersFilter{})
+		require.NoError(t, err)
+		require.Equal(t, want, got)
 	})
 
 	t.Run("ListIncludeDeleted", func(t *testing.T) {
@@ -594,13 +604,8 @@ func TestAIProvidersCRUD(t *testing.T) {
 
 		// Auditors label past sessions, which can name deleted providers.
 		auditorClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID, rbac.RoleAuditor())
-		res, err := auditorClient.Request(ctx, http.MethodGet, "/api/v2/ai/providers", nil,
-			codersdk.WithQueryParam("include_deleted", "true"))
+		got, err := auditorClient.AIProviders(ctx, codersdk.AIProvidersFilter{IncludeDeleted: true})
 		require.NoError(t, err)
-		defer res.Body.Close()
-		require.Equal(t, http.StatusOK, res.StatusCode)
-		var got []codersdk.AIProvider
-		require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
 
 		require.Len(t, got, 2)
 		require.Equal(t, gone.ID, got[0].ID)
@@ -637,7 +642,7 @@ func TestAIProvidersCRUD(t *testing.T) {
 		ctx := testutil.Context(t, testutil.WaitLong)
 
 		anon := codersdk.New(ownerClient.URL)
-		_, err := anon.AIProviders(ctx)
+		_, err := anon.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.Error(t, err)
 		var sdkErr *codersdk.Error
 		require.ErrorAs(t, err, &sdkErr)
@@ -2323,7 +2328,7 @@ func TestAIProviderHostnameCollisionWarnings(t *testing.T) {
 		require.Nil(t, winner.Status, "first provider in database order should not get a warning on get")
 
 		//nolint:gocritic // Owner role is the audience for this endpoint.
-		providers, err := client.AIProviders(ctx)
+		providers, err := client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		require.Len(t, providers, 2)
 		var firstListed, secondListed codersdk.AIProvider
@@ -2439,7 +2444,7 @@ func TestAIProviderHostnameCollisionWarnings(t *testing.T) {
 		require.Nil(t, second.Status)
 
 		//nolint:gocritic // Owner role is the audience for this endpoint.
-		providers, err := client.AIProviders(ctx)
+		providers, err := client.AIProviders(ctx, codersdk.AIProvidersFilter{})
 		require.NoError(t, err)
 		for _, provider := range providers {
 			require.Nil(t, provider.Status)
