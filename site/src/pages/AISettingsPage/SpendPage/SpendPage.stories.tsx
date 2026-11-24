@@ -10,7 +10,7 @@ import {
 } from "storybook/test";
 import { reactRouterParameters } from "storybook-addon-remix-react-router";
 import { API } from "#/api/api";
-import { aiProvidersIncludingDeleted } from "#/api/queries/aiProviders";
+import { aiProvidersIncludingDeletedKey } from "#/api/queries/aiProviders";
 import type { OrganizationAISpendUser } from "#/api/typesGenerated";
 import {
 	MockAIProviderOpenAI,
@@ -211,7 +211,7 @@ export const ConfiguredProviderNames: Story = {
 		reactRouter: explicitRange,
 		queries: [
 			{
-				key: aiProvidersIncludingDeleted().queryKey,
+				key: aiProvidersIncludingDeletedKey,
 				data: [...MockAIProviders, mockDeepSeekProvider],
 			},
 		],
