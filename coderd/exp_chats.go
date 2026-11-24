@@ -8551,8 +8551,11 @@ func (api *API) readableChatModelsInOrganization(
 }
 
 func chatModelConfigReadScope(scopes database.APIKeyScopes) bool {
-	return scopes.Has(database.ApiKeyScopeCoderAll) ||
-		scopes.Has(database.ApiKeyScopeChatModelConfigRead)
+	covered, err := rbac.ScopesCover(
+		slice.List(scopes, database.APIKeyScope.ToRBAC),
+		rbac.ScopeName(database.ApiKeyScopeChatModelConfigRead),
+	)
+	return err == nil && covered
 }
 
 // chatModelProviderDescriptors assembles the redacted provider descriptors
