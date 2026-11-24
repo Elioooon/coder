@@ -10,15 +10,18 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/coder/coder/v2/coderd/httpmw"
+	"github.com/coder/coder/v2/coderd/jwtutils"
 	"github.com/coder/coder/v2/coderd/workspaceapps"
 	"github.com/coder/coder/v2/coderd/workspaceapps/appurl"
 	"github.com/coder/coder/v2/coderd/workspaceapps/previewhost"
+	"github.com/coder/coder/v2/codersdk"
 	"github.com/coder/coder/v2/codersdk/workspacesdk"
 	"github.com/coder/coder/v2/testutil"
 	"github.com/coder/websocket"
@@ -45,6 +48,9 @@ func previewUpstream(t *testing.T) *url.URL {
 		rw.Header().Set("Access-Control-Allow-Origin", "*")
 		_, _ = rw.Write([]byte("preview"))
 	})
+	r.Get("/cookies", func(rw http.ResponseWriter, r *http.Request) {
+		_, _ = rw.Write([]byte(r.Header.Get("Cookie")))
+	})
 	r.Get("/early-hints", func(rw http.ResponseWriter, _ *http.Request) {
 		rw.Header().Set("Link", "<https://other.example.com/x.js>; rel=preload; as=script")
 		rw.WriteHeader(http.StatusEarlyHints)
@@ -70,25 +76,28 @@ func previewUpstream(t *testing.T) *url.URL {
 	return u
 }
 
-func newPreviewServer(t *testing.T, provider workspaceapps.SignedTokenProvider, upstream *url.URL) *httptest.Server {
+func newPreviewServer(t *testing.T, accessURL string, provider workspaceapps.SignedTokenProvider, upstream *url.URL, keycache jwtutils.StaticKey) *httptest.Server {
 	t.Helper()
 
 	dashboardURL, err := url.Parse(previewDashboard)
 	require.NoError(t, err)
+	serverURL, err := url.Parse(accessURL)
+	require.NoError(t, err)
 	hostnameRegex, err := appurl.CompileHostnamePattern(previewPattern)
 	require.NoError(t, err)
-	hosting, err := previewhost.Strict(previewPattern, dashboardURL, dashboardURL)
+	hosting, err := previewhost.Strict(previewPattern, serverURL, dashboardURL)
 	require.NoError(t, err)
 	srv := workspaceapps.NewServer(workspaceapps.ServerOptions{
-		Logger:              testutil.Logger(t),
-		DashboardURL:        dashboardURL,
-		AccessURL:           dashboardURL,
-		Hostname:            previewPattern,
-		HostnameRegex:       hostnameRegex,
-		Previews:            hosting,
-		RealIPConfig:        &httpmw.RealIPConfig{},
-		SignedTokenProvider: provider,
-		AgentProvider:       &fakeAgentProvider{upstream: upstream},
+		Logger:                   testutil.Logger(t),
+		DashboardURL:             dashboardURL,
+		AccessURL:                serverURL,
+		Hostname:                 previewPattern,
+		HostnameRegex:            hostnameRegex,
+		Previews:                 hosting,
+		RealIPConfig:             &httpmw.RealIPConfig{},
+		SignedTokenProvider:      provider,
+		AgentProvider:            &fakeAgentProvider{upstream: upstream},
+		APIKeyEncryptionKeycache: keycache,
 	})
 	ts := httptest.NewServer(httpmw.ExtractRealIP(srv.RealIPConfig)(srv.HandleSubdomain()(http.NotFoundHandler())))
 	t.Cleanup(ts.Close)
@@ -122,14 +131,31 @@ func TestServePreviewPolicy(t *testing.T) {
 	t.Parallel()
 
 	upstream := previewUpstream(t)
+	keycache := jwtutils.StaticKey{ID: "test", Key: generateSecret(t, 32)}
+	signIn := func(host string, issuedAt time.Time) jwtutils.Claims {
+		payload := workspaceapps.PreviewSignInPayload{Host: host, APIKey: "preview-api-key"}
+		payload.Fill(issuedAt)
+		return payload
+	}
+	// The smuggled app key payload, given the preview's host, differs only
+	// in its audience.
+	appKey := struct {
+		workspaceapps.EncryptedAPIKeyPayload
+		Host string `json:"host"`
+	}{Host: previewHost}
+	appKey.APIKey = "preview-api-key"
+	appKey.Fill(time.Now())
 	for _, tc := range []struct {
 		name         string
 		host         string
 		path         string
 		header       http.Header
+		signIn       jwtutils.Claims
 		signedOut    bool
 		deadUpstream bool
 		wantStatus   int
+		wantLocation string
+		wantCookie   string
 	}{
 		{name: "Proxied", wantStatus: http.StatusOK},
 		{name: "ProxiedAfterEarlyHints", path: "/early-hints", wantStatus: http.StatusOK},
@@ -142,6 +168,17 @@ func TestServePreviewPolicy(t *testing.T) {
 		{name: "UnparsableHost", host: "preview--08080--agent--workspace--user--apps.test.coder.com", wantStatus: http.StatusBadRequest},
 		{name: "DirectOpen", header: http.Header{"Sec-Fetch-Dest": {"document"}}, wantStatus: http.StatusForbidden},
 		{name: "NoFetchMetadata", header: http.Header{"Sec-Fetch-Dest": nil}, wantStatus: http.StatusForbidden},
+		{
+			name:         "SignIn",
+			path:         "/docs/?page=2",
+			signIn:       signIn(previewHost, time.Now()),
+			wantStatus:   http.StatusSeeOther,
+			wantLocation: "/docs/?page=2",
+			wantCookie:   "__Host-coder_preview_session_token=preview-api-key; Path=/; HttpOnly; Secure",
+		},
+		{name: "SignInForOtherHost", signIn: signIn("preview--3000--agent--workspace--user--apps.test.coder.com", time.Now()), wantStatus: http.StatusBadRequest},
+		{name: "SignInExpired", signIn: signIn(previewHost, time.Now().Add(-2*time.Minute)), wantStatus: http.StatusBadRequest},
+		{name: "SignInWithAppKey", signIn: appKey, wantStatus: http.StatusBadRequest},
 		{name: "SmuggledAPIKey", path: "/?" + workspaceapps.SubdomainProxyAPIKeyParam + "=x", wantStatus: http.StatusBadRequest},
 		{name: "SignedOut", signedOut: true, wantStatus: http.StatusUnauthorized},
 		{name: "AgentUnreachable", deadUpstream: true, wantStatus: http.StatusBadGateway},
@@ -158,7 +195,7 @@ func TestServePreviewPolicy(t *testing.T) {
 			provider := &fakeSignedTokenProvider{token: previewToken(host)}
 			if tc.signedOut {
 				// Workspace proxies copy coderd's error page into the map.
-				provider = &fakeSignedTokenProvider{issue: func(rw http.ResponseWriter) {
+				provider = &fakeSignedTokenProvider{issue: func(rw http.ResponseWriter, _ workspaceapps.IssueTokenRequest) {
 					rw.Header()["Content-Type"] = []string{"text/html; charset=utf-8"}
 					rw.WriteHeader(http.StatusUnauthorized)
 				}}
@@ -167,14 +204,25 @@ func TestServePreviewPolicy(t *testing.T) {
 			if tc.deadUpstream {
 				target = &url.URL{Scheme: "http", Host: "127.0.0.1:1"}
 			}
-			ts := newPreviewServer(t, provider, target)
+			ts := newPreviewServer(t, previewDashboard, provider, target, keycache)
 
+			path := tc.path
+			if tc.signIn != nil {
+				token, err := jwtutils.Encrypt(ctx, keycache, tc.signIn)
+				require.NoError(t, err)
+				u, err := url.Parse(path)
+				require.NoError(t, err)
+				q := u.Query()
+				q.Set(previewhost.SignInParam, token)
+				u.RawQuery = q.Encode()
+				path = u.String()
+			}
 			var interim []int
 			trace := &httptrace.ClientTrace{Got1xxResponse: func(code int, _ textproto.MIMEHeader) error {
 				interim = append(interim, code)
 				return nil
 			}}
-			req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodGet, ts.URL+tc.path, nil)
+			req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodGet, ts.URL+path, nil)
 			require.NoError(t, err)
 			req.Host = host
 			req.Header.Set("Sec-Fetch-Dest", "iframe")
@@ -193,7 +241,13 @@ func TestServePreviewPolicy(t *testing.T) {
 			require.Equal(t, []string{previewCSP}, res.Header.Values("Content-Security-Policy"))
 			require.Empty(t, interim, "interim responses must not reach the browser")
 			require.Empty(t, res.Header.Values("Link"))
-			if tc.wantStatus != http.StatusOK {
+			if tc.wantLocation != "" {
+				require.Equal(t, tc.wantLocation, res.Header.Get("Location"))
+			}
+			if tc.wantCookie != "" {
+				require.Equal(t, []string{tc.wantCookie}, res.Header.Values("Set-Cookie"))
+				require.Equal(t, "no-referrer", res.Header.Get("Referrer-Policy"))
+			} else if tc.wantStatus != http.StatusOK {
 				require.Empty(t, res.Header.Values("Set-Cookie"), "a refused request must not reach the preview server")
 			}
 			if tc.name == "Proxied" {
@@ -208,7 +262,7 @@ func TestServePreviewPolicy(t *testing.T) {
 		t.Parallel()
 		ctx := testutil.Context(t, testutil.WaitShort)
 
-		ts := newPreviewServer(t, &fakeSignedTokenProvider{token: previewToken(previewHost)}, upstream)
+		ts := newPreviewServer(t, previewDashboard, &fakeSignedTokenProvider{token: previewToken(previewHost)}, upstream, keycache)
 		//nolint:bodyclose // The response to a successful dial has no body.
 		conn, res, err := websocket.Dial(ctx, strings.Replace(ts.URL, "http", "ws", 1)+"/ws", &websocket.DialOptions{
 			// Chromium sends no fetch metadata with a WebSocket handshake.
@@ -223,6 +277,87 @@ func TestServePreviewPolicy(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "hello", string(msg))
 	})
+}
+
+// Over HTTPS the preview session cookie is Secure and host-prefixed even with
+// the deployment's secure cookie flag off. On plain HTTP it keeps the bare
+// name. A preview host accepts only the name it sets, and neither name
+// reaches the preview server.
+func TestServePreviewSessionCookie(t *testing.T) {
+	t.Parallel()
+
+	upstream := previewUpstream(t)
+	keycache := jwtutils.StaticKey{ID: "test", Key: generateSecret(t, 32)}
+	const hostPrefixed = "__Host-" + codersdk.PreviewSessionTokenCookie
+	for _, tc := range []struct {
+		scheme     string
+		wantCookie string
+		otherName  string
+	}{
+		{
+			scheme:     "https",
+			wantCookie: hostPrefixed + "=preview-api-key; Path=/; HttpOnly; Secure",
+			otherName:  codersdk.PreviewSessionTokenCookie,
+		},
+		{
+			scheme:     "http",
+			wantCookie: codersdk.PreviewSessionTokenCookie + "=preview-api-key; Path=/; HttpOnly",
+			otherName:  hostPrefixed,
+		},
+	} {
+		t.Run(tc.scheme, func(t *testing.T) {
+			t.Parallel()
+			ctx := testutil.Context(t, testutil.WaitShort)
+
+			get := func(provider workspaceapps.SignedTokenProvider, path string, cookies ...*http.Cookie) (int, http.Header, string) {
+				t.Helper()
+				ts := newPreviewServer(t, tc.scheme+"://dashboard.test.coder.com", provider, upstream, keycache)
+				req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
+				require.NoError(t, err)
+				req.Host = previewHost
+				req.Header.Set("Sec-Fetch-Dest", "iframe")
+				for _, cookie := range cookies {
+					req.AddCookie(cookie)
+				}
+				client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+					return http.ErrUseLastResponse
+				}}
+				res, err := client.Do(req)
+				require.NoError(t, err)
+				defer res.Body.Close()
+				body, err := io.ReadAll(res.Body)
+				require.NoError(t, err)
+				return res.StatusCode, res.Header, string(body)
+			}
+
+			payload := workspaceapps.PreviewSignInPayload{Host: previewHost, APIKey: "preview-api-key"}
+			payload.Fill(time.Now())
+			signInToken, err := jwtutils.Encrypt(ctx, keycache, payload)
+			require.NoError(t, err)
+			status, header, body := get(&fakeSignedTokenProvider{}, "/?"+previewhost.SignInParam+"="+url.QueryEscape(signInToken))
+			require.Equal(t, http.StatusSeeOther, status, body)
+			require.Equal(t, []string{tc.wantCookie}, header.Values("Set-Cookie"))
+			session := (&http.Response{Header: header}).Cookies()[0]
+
+			// The fake provider answers with the session it was handed.
+			echoSession := &fakeSignedTokenProvider{issue: func(rw http.ResponseWriter, req workspaceapps.IssueTokenRequest) {
+				rw.WriteHeader(http.StatusUnauthorized)
+				_, _ = rw.Write([]byte(req.SessionToken))
+			}}
+			_, _, body = get(echoSession, "/", session)
+			require.Equal(t, "preview-api-key", body)
+			_, _, body = get(echoSession, "/", &http.Cookie{Name: tc.otherName, Value: "other-api-key"})
+			require.Empty(t, body)
+
+			status, _, body = get(&fakeSignedTokenProvider{token: previewToken(previewHost)}, "/cookies",
+				&http.Cookie{Name: hostPrefixed, Value: "a"},
+				&http.Cookie{Name: codersdk.PreviewSessionTokenCookie, Value: "b"},
+				&http.Cookie{Name: "page", Value: "c"},
+			)
+			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, "page=c", body)
+		})
+	}
 }
 
 // A file preview reaches only its own files on the agent API, without the
@@ -250,7 +385,7 @@ func TestServeFilePreview(t *testing.T) {
 		ctx := testutil.Context(t, testutil.WaitShort)
 		app, err := appurl.ParseSubdomainAppURL(subdomain)
 		require.NoError(t, err)
-		ts := newPreviewServer(t, &fakeSignedTokenProvider{token: &workspaceapps.SignedToken{
+		ts := newPreviewServer(t, previewDashboard, &fakeSignedTokenProvider{token: &workspaceapps.SignedToken{
 			Request: workspaceapps.Request{
 				AccessMethod:      workspaceapps.AccessMethodSubdomain,
 				BasePath:          "/",
@@ -260,7 +395,7 @@ func TestServeFilePreview(t *testing.T) {
 				AppSlugOrPort:     app.AppSlugOrPort,
 			},
 			AppURL: fmt.Sprintf("http://127.0.0.1:%d/api/v0/previews/0123abcd", workspacesdk.AgentHTTPAPIServerPort),
-		}}, upstreamURL)
+		}}, upstreamURL, jwtutils.StaticKey{})
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+path, nil)
 		require.NoError(t, err)
