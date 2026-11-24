@@ -680,9 +680,7 @@ type GetAIProvidersParams struct {
 }
 
 // Returns AI provider rows. Soft-deleted and disabled rows are excluded
-// unless include_deleted or include_disabled is set. Soft-deleted rows can
-// share a name, so the live row of a name sorts first, then the most
-// recently updated one.
+// unless include_deleted or include_disabled is set.
 func (q *sqlQuerier) GetAIProviders(ctx context.Context, arg GetAIProvidersParams) ([]AIProvider, error) {
 	rows, err := q.db.QueryContext(ctx, getAIProviders, arg.IncludeDeleted, arg.IncludeDisabled)
 	if err != nil {

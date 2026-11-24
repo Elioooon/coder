@@ -393,9 +393,7 @@ type sqlcQuerier interface {
 	// so callers can select the oldest non-empty key per provider without issuing N queries.
 	GetAIProviderKeysByProviderIDs(ctx context.Context, providerIds []uuid.UUID) ([]AIProviderKey, error)
 	// Returns AI provider rows. Soft-deleted and disabled rows are excluded
-	// unless include_deleted or include_disabled is set. Soft-deleted rows can
-	// share a name, so the live row of a name sorts first, then the most
-	// recently updated one.
+	// unless include_deleted or include_disabled is set.
 	GetAIProviders(ctx context.Context, arg GetAIProvidersParams) ([]AIProvider, error)
 	GetAPIKeyByID(ctx context.Context, id string) (APIKey, error)
 	// there is no unique constraint on empty token names

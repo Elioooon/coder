@@ -600,7 +600,6 @@ func TestAIProvidersCRUD(t *testing.T) {
 		require.NoError(t, ownerClient.DeleteAIProvider(ctx, reusedBefore.ID.String()))
 		reused := create("list-reused")
 
-		// Auditors label past sessions, which can name deleted providers.
 		auditorClient, _ := coderdtest.CreateAnotherUser(t, ownerClient, firstUser.OrganizationID, rbac.RoleAuditor())
 		got, err := auditorClient.AIProviders(ctx, codersdk.AIProvidersFilter{IncludeDeleted: true})
 		require.NoError(t, err)

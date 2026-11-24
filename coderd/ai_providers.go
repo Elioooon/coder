@@ -96,8 +96,7 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	// Deleted providers can share a name. The query sorts the row to keep
-	// first.
+	// The query orders each name's live or newest deleted row first.
 	rows = slices.CompactFunc(rows, func(a, b database.AIProvider) bool {
 		return a.Name == b.Name
 	})
