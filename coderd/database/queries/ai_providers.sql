@@ -41,6 +41,26 @@ ORDER BY
     deleted ASC,
     updated_at DESC;
 
+-- name: GetAIProviderSummaries :many
+SELECT
+    id,
+    type,
+    name,
+    display_name,
+    icon,
+    enabled,
+    created_at,
+    updated_at
+FROM
+    ai_providers
+WHERE
+    (@include_deleted::boolean OR NOT deleted)
+    AND (@include_disabled::boolean OR enabled)
+ORDER BY
+    name ASC,
+    deleted ASC,
+    updated_at DESC;
+
 -- name: InsertAIProvider :one
 INSERT INTO ai_providers (
     id,

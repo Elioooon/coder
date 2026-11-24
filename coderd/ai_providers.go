@@ -68,26 +68,14 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// api.Authorize would log a warning for every caller without this
-	// permission, so the authorizer is called directly.
-	fullView := api.HTTPAuth.Authorizer.Authorize(ctx, httpmw.UserAuthorization(ctx),
-		policy.ActionRead, rbac.ResourceAIProvider) == nil
-	dbCtx := ctx
-	if !fullView {
-		canReadSessions := api.HTTPAuth.Authorizer.Authorize(ctx, httpmw.UserAuthorization(ctx),
-			policy.ActionRead, rbac.ResourceAibridgeInterception) == nil
-		if !canReadSessions && !api.aiProviderReadInKeyScope(ctx) {
-			httpapi.Forbidden(rw)
-			return
-		}
-		//nolint:gocritic // Any user may list providers; the rows are redacted below.
-		dbCtx = dbauthz.AsAIProviderMetadataReader(ctx)
-	}
-
-	rows, err := api.Database.GetAIProviders(dbCtx, database.GetAIProvidersParams{
+	rows, err := api.Database.GetAIProviders(ctx, database.GetAIProvidersParams{
 		IncludeDeleted:  includeDeleted,
 		IncludeDisabled: true,
 	})
+	if dbauthz.IsNotAuthorizedError(err) {
+		api.aiProviderSummariesList(rw, r, includeDeleted)
+		return
+	}
 	if err != nil {
 		api.Logger.Error(ctx, "list AI providers", slog.Error(err))
 		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
@@ -100,15 +88,6 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 	rows = slices.CompactFunc(rows, func(a, b database.AIProvider) bool {
 		return a.Name == b.Name
 	})
-
-	if !fullView {
-		out := make([]codersdk.AIProvider, 0, len(rows))
-		for _, row := range rows {
-			out = append(out, db2sdk.AIProviderRedacted(row))
-		}
-		httpapi.Write(ctx, rw, http.StatusOK, out)
-		return
-	}
 
 	keysByProvider, err := loadAIProviderKeysByProvider(ctx, api.Database)
 	if err != nil {
@@ -138,18 +117,34 @@ func (api *API) aiProvidersList(rw http.ResponseWriter, r *http.Request) {
 	httpapi.Write(ctx, rw, http.StatusOK, out)
 }
 
-func (api *API) aiProviderReadInKeyScope(ctx context.Context) bool {
-	caller := httpmw.UserAuthorization(ctx)
-	// The owner role can read AI providers, so only the key's scope decides.
-	scopeOnly := rbac.Subject{
-		Type:         caller.Type,
-		FriendlyName: caller.FriendlyName,
-		ID:           caller.ID,
-		Roles:        rbac.RoleIdentifiers{rbac.RoleOwner()},
-		Scope:        caller.Scope,
+func (api *API) aiProviderSummariesList(rw http.ResponseWriter, r *http.Request, includeDeleted bool) {
+	ctx := r.Context()
+
+	rows, err := api.Database.GetAIProviderSummaries(ctx, database.GetAIProviderSummariesParams{
+		IncludeDeleted:  includeDeleted,
+		IncludeDisabled: true,
+	})
+	if dbauthz.IsNotAuthorizedError(err) {
+		httpapi.Forbidden(rw)
+		return
 	}
-	return api.HTTPAuth.Authorizer.Authorize(ctx, scopeOnly,
-		policy.ActionRead, rbac.ResourceAIProvider) == nil
+	if err != nil {
+		api.Logger.Error(ctx, "list AI provider summaries", slog.Error(err))
+		httpapi.Write(ctx, rw, http.StatusInternalServerError, codersdk.Response{
+			Message: "Internal error listing AI providers.",
+			Detail:  err.Error(),
+		})
+		return
+	}
+	rows = slices.CompactFunc(rows, func(a, b database.GetAIProviderSummariesRow) bool {
+		return a.Name == b.Name
+	})
+
+	out := make([]codersdk.AIProvider, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, db2sdk.AIProviderFromSummary(row))
+	}
+	httpapi.Write(ctx, rw, http.StatusOK, out)
 }
 
 // @Summary Get an AI provider

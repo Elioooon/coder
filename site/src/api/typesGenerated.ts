@@ -802,6 +802,7 @@ export type APIKeyScope =
 	| "ai_provider:create"
 	| "ai_provider:delete"
 	| "ai_provider:read"
+	| "ai_provider:read_secret"
 	| "ai_provider:update"
 	| "ai_seat:*"
 	| "ai_seat:create"
@@ -1070,6 +1071,7 @@ export const APIKeyScopes: APIKeyScope[] = [
 	"ai_provider:create",
 	"ai_provider:delete",
 	"ai_provider:read",
+	"ai_provider:read_secret",
 	"ai_provider:update",
 	"ai_seat:*",
 	"ai_seat:create",
