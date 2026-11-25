@@ -1091,15 +1091,22 @@ func ConvertConfig(ctx context.Context, logger slog.Logger, instrument *promoaut
 			}
 		}
 
+		endpoint := oauth2.Endpoint{
+			AuthURL:  entry.AuthURL,
+			TokenURL: entry.TokenURL,
+		}
+		if entry.ClientSecret == "" {
+			// Public clients have no secret and must identify themselves in the
+			// request body. Avoid auto-detection caching Basic auth after refresh,
+			// which would make later authorization code exchanges omit client_id.
+			endpoint.AuthStyle = oauth2.AuthStyleInParams
+		}
 		oc := &oauth2.Config{
 			ClientID:     entry.ClientID,
 			ClientSecret: entry.ClientSecret,
-			Endpoint: oauth2.Endpoint{
-				AuthURL:  entry.AuthURL,
-				TokenURL: entry.TokenURL,
-			},
-			RedirectURL: authRedirect.String(),
-			Scopes:      entry.Scopes,
+			Endpoint:     endpoint,
+			RedirectURL:  authRedirect.String(),
+			Scopes:       entry.Scopes,
 		}
 
 		var oauthConfig promoauth.OAuth2Config = oc

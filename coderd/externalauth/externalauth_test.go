@@ -2065,6 +2065,83 @@ func TestExchangeWithClientSecret(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestPublicClientAuthStylePersistsAcrossRefresh(t *testing.T) {
+	t.Parallel()
+
+	type tokenRequest struct {
+		grantType     string
+		clientID      string
+		authorization string
+	}
+
+	var (
+		requestMu sync.Mutex
+		requests  []tokenRequest
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		req := tokenRequest{
+			grantType:     r.Form.Get("grant_type"),
+			clientID:      r.Form.Get("client_id"),
+			authorization: r.Header.Get("Authorization"),
+		}
+		requestMu.Lock()
+		requests = append(requests, req)
+		requestMu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		// Entra accepts the Basic-auth form for a public client during refresh,
+		// but requires client_id in the body for an authorization code exchange.
+		// This reproduces the oauth2 AuthStyle cache poisoning sequence.
+		if req.grantType == "authorization_code" && req.clientID == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = io.WriteString(w, `{"error":"invalid_request","error_description":"AADSTS900144"}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	instrument := promoauth.NewFactory(prometheus.NewRegistry())
+	configs, err := externalauth.ConvertConfig(context.Background(), testutil.Logger(t), instrument, []codersdk.ExternalAuthConfig{{
+		ID:       "entra",
+		Type:     codersdk.EnhancedExternalAuthProviderAzureDevopsEntra.String(),
+		ClientID: "public-client",
+		AuthURL:  "https://login.microsoftonline.com/tenant/oauth2/authorize",
+		TokenURL: srv.URL,
+		Scopes:   []string{"offline_access"},
+	}}, &url.URL{Scheme: "https", Host: "coder.example.com"}, srv.Client())
+	require.NoError(t, err)
+	require.Len(t, configs, 1)
+
+	ctx := testutil.Context(t, testutil.WaitLong)
+	expiredToken := &oauth2.Token{
+		AccessToken:  "expired",
+		RefreshToken: "refresh",
+		Expiry:       time.Now().Add(-time.Hour),
+	}
+	_, err = configs[0].TokenSource(ctx, expiredToken).Token()
+	require.NoError(t, err)
+
+	_, err = configs[0].Exchange(ctx, "authorization-code")
+	require.NoError(t, err)
+
+	requestMu.Lock()
+	got := append([]tokenRequest(nil), requests...)
+	requestMu.Unlock()
+	require.Len(t, got, 2)
+	assert.Equal(t, "refresh_token", got[0].grantType)
+	assert.Equal(t, "authorization_code", got[1].grantType)
+	for i, req := range got {
+		assert.Equal(t, "public-client", req.clientID, "request %d must include client_id in the body", i)
+		assert.Empty(t, req.authorization, "request %d must not use Basic auth without a client secret", i)
+	}
+}
+
 func TestTokenRevocationResponseOk(t *testing.T) {
 	t.Parallel()
 
